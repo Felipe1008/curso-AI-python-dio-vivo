@@ -4,7 +4,7 @@ import textwrap
 from colorama import Fore, Back, Style
 
 
-#posteriormente posso deixar Cliente abstrata e separar em PF e PJ
+# Classe base para Clientes, que pode ser estendida futuramente para Cliente Pessoa Física (PF) ou Pessoa Jurídica (PJ)
 class Cliente:
     def __init__(self, endereco):
         self._endereco = endereco
@@ -24,6 +24,7 @@ class Cliente:
     def realizar_transacao(self, conta, transacao):
         transacao.registrar(conta)
 
+# Subclasse específica para Cliente do tipo Pessoa Física (CPF)
 class PessoaFisica(Cliente):
     def __init__(self, endereco, cpf, nome, data_nascimento):
         super().__init__(endereco)
@@ -42,7 +43,8 @@ class PessoaFisica(Cliente):
     @property
     def data_nascimento(self):
         return self._data_nascimento
-    
+
+# Classe base para Conta, que pode ser estendida para tipos de contas específicos    
 class Conta:
     def __init__(self, numero, agencia, cliente):
         self._numero = numero
@@ -76,8 +78,8 @@ class Conta:
         return cls(cliente, numero)
 
     def sacar(self, valor):
-        if valor < self._saldo and valor > 0:
-            self._saldo -= valor
+        if valor < self._saldo and valor > 0: # Verifica se há saldo suficiente
+            self._saldo -= valor # Deduz o valor sacado do saldo
             print(Fore.GREEN + "≡≡≡ Saque efetuado com sucesso! ≡≡≡")
             return True
         else:
@@ -85,27 +87,31 @@ class Conta:
             return False
     
     def depositar(self, valor):
-        if valor > 0:
-            self._saldo += valor
+        if valor > 0: # Verifica se o valor do depósito é válido
+            self._saldo += valor # Adiciona o valor depositado ao saldo
             print(Fore.GREEN + "≡≡≡ Depósito efetuado com sucesso! ≡≡≡ ")
             return True
         else:
             print(Fore.RED + "@@@ Valor inválido! @@@")
             return False
 
+# Subclasse específica para Conta Corrente, com regras de saque e limite
 class ContaCorrente(Conta):
+    # Construtor seta valores padrões para limite e limite de saques
     def __init__(self, numero, agencia, cliente, limite=500, limite_saques=3):
         super().__init__(numero, agencia, cliente)
         self._limite = limite
         self._limite_saques = limite_saques
         self._qtdade_saques = 0
-        
+
+    # Conta quantos saques já foram feitos no dia para determinada conta corrente    
     def contar_qtdade_saques(self):
         self._qtdade_saques = 0
-        for transacao in self.historico.transacoes:
+        for transacao in self.historico.transacoes: # Percorre as transações da conta
                 if transacao['tipo'] == "Saque":
                     self._qtdade_saques += 1
 
+    # Sobrescreve o método sacar para aplicar limites e restrições adicionais
     def sacar(self, valor):
         self.contar_qtdade_saques()
 
@@ -117,24 +123,28 @@ class ContaCorrente(Conta):
             print(Fore.RED + "@@@ Operação inconcluída! Quantidade máxima de saques atingida. @@@")
             return False
 
-        return super().sacar(valor)
- 
+        return super().sacar(valor)  # Chama o método sacar da classe base
+
+# Classe abstrata que define a estrutura de uma Transação
 class Transacao(ABC):
     @abstractmethod
     def registrar(self, conta):
         pass
 
+# Classe que armazena o histórico de transações de uma conta
 class Historico:
     def __init__(self):
-        self._transacoes = []
+        self._transacoes = [] # Lista de transações realizadas na conta
 
     @property
     def transacoes(self):
         return self._transacoes
 
+    # Adiciona uma transação ao histórico
     def adicionar_transacao(self, transacao_info):
         self._transacoes.append(transacao_info)
 
+    # Exibe o histórico completo de transações
     def exibir_historico(self):
         print(f"{Fore.YELLOW + 'Data':<30}{Fore.BLUE + 'Tipo':<20}{Fore.GREEN + 'Valor (R$)':>25}")
         print(Fore.WHITE + "-" * 60)
@@ -147,34 +157,39 @@ class Historico:
         else:
             print(Fore.WHITE + "Não há transações!")
 
+# Subclasse de Transacao para depósitos
 class Deposito(Transacao):
     def __init__(self, valor):
         self._valor = valor
-    
+
+    # Registra um depósito em uma conta
     def registrar(self, conta):
-        if conta.depositar(self._valor):
+        if conta.depositar(self._valor):  # Se o depósito na conta for realizado
             transacao_info = {
                 "tipo": "Deposito",
                 "valor": self._valor,
                 "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
             }
 
-            conta.historico.adicionar_transacao(transacao_info)
-        
+            conta.historico.adicionar_transacao(transacao_info) # Adiciona a transação ao histórico
+
+# Subclasse de Transacao para saques       
 class Saque(Transacao):
-    def __init__(self, valor):
+    def __init__(self, valor): 
         self._valor = valor
-    
+
+    # Registra um saque em uma conta
     def registrar(self, conta):
-        if conta.sacar(self._valor):
+        if conta.sacar(self._valor):  # Se o saque na conta for realizado
             transacao_info = {
                 "tipo": "Saque",
                 "valor": self._valor,
                 "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
             }
             
-            conta.historico.adicionar_transacao(transacao_info)
-            
+            conta.historico.adicionar_transacao(transacao_info) # Adiciona a transação ao histórico
+
+# Classe Banco que gerencia clientes, contas e transações           
 class Banco:
     def __init__(self, endereco, nome):
         self._endereco = endereco
@@ -198,6 +213,7 @@ class Banco:
     def contas(self):
         return self._contas
 
+    # Exibe o menu principal e retorna a opção escolhida pelo usuário
     def menu(self):
         menu = Fore.WHITE + """\n
         ========= MENU ==========
@@ -210,11 +226,13 @@ class Banco:
         [q]\t Sair
         """
         return input(textwrap.dedent(menu))
-    
+
+    # Encontra um cliente pelo CPF
     def filtrar_clientes(self, cpf, clientes):
         clientes_filtrados = [cliente for cliente in clientes if cliente.cpf == cpf]
         return clientes_filtrados[0] if clientes_filtrados else None
     
+    # Recupera uma conta específica de um cliente pela agência e número da conta
     def recuperar_conta_cliente(self, cliente):
         if not cliente.contas:
             print(Fore.RED + "@@@ Cliente não possui conta! @@@")
@@ -228,6 +246,7 @@ class Banco:
         
         return None
 
+    # Realiza um depósito na conta de um cliente
     def depositar(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
         cliente = self.filtrar_clientes(cpf, clientes)
@@ -246,6 +265,7 @@ class Banco:
             
         cliente.realizar_transacao(conta, transacao)
 
+    # Realiza um saque na conta de um cliente
     def sacar(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
         cliente = self.filtrar_clientes(cpf, clientes)
@@ -264,16 +284,19 @@ class Banco:
         
         cliente.realizar_transacao(conta, transacao)
     
+    # Exibe o extrato de uma conta específica de um determinado cliente
     def exibir_extrato(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
-        cliente = self.filtrar_clientes(cpf, clientes)
+        cliente = self.filtrar_clientes(cpf, clientes) # Encontra o cliente pelo CPF
 
+        # Se o cliente não for encontrado Retorna
         if not cliente:
             print(Fore.RED + "@@@ Cliente não encontrado! @@@")
             return
         
-        conta = self.recuperar_conta_cliente(cliente)
+        conta = self.recuperar_conta_cliente(cliente) # Encontra a conta do cliente
 
+        # Se a conta não for encontrada Retorna
         if not conta:
             print(Fore.RED + "@@@ Cliente sem conta cadastrada! Não foi possível exibir o extrato @@@")
             return
@@ -283,10 +306,11 @@ class Banco:
         print(Fore.WHITE + f"Agência: {conta.agencia} | Conta: {conta.numero}")
         print(Fore.WHITE + "="*60)
 
-        conta.historico.exibir_historico()
+        conta.historico.exibir_historico() # Exibe o histórico das transações da conta
         print(Fore.GREEN + f"{'Saldo atual:':<40}{conta.saldo:>20.2f}")
         print(Fore.WHITE + "="*60)
-    
+
+    # Cria e adiciona um novo cliente ao banco
     def criar_cliente(self, clientes):
         tipo_cliente = int(input(Fore.WHITE + """
         [1] para PF
@@ -306,6 +330,7 @@ class Banco:
 
         clientes.append(cliente)
 
+    # Abre uma nova conta e a associa a um cliente
     def criar_conta(self, clientes):
         cpf = input(Fore.WHITE + "Digite o CPF do cliente: ")
         cliente = self.filtrar_clientes(cpf, clientes)
@@ -327,10 +352,11 @@ class Banco:
             print(Fore.RED + "@@@ Escolha inválida! @@@")
             return
 
-        self.contas.append(conta)
-        cliente.adicionar_conta(conta)
+        self.contas.append(conta) # Adiciona a conta à lista de contas do banco
+        cliente.adicionar_conta(conta) # Adiciona a conta ao cliente
         print(Fore.GREEN + "≡≡≡ Conta criada com sucesso! ≡≡≡")
         
+    # Lista as contas de um determinado cliente
     def listar_contas(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
         cliente = self.filtrar_clientes(cpf, clientes)
@@ -347,12 +373,13 @@ class Banco:
             print(Fore.WHITE + f"Número: {conta.numero}")
             print(Fore.WHITE + "="*20)
 
-
+# Função principal que inicia o sistema do banco
 def main():
     clientes = []
 
-    banco = Banco("Rua WYZ, 347", "JPM")
+    banco = Banco("Rua WYZ, 347", "JPM") # Criação de uma instância do banco
     
+    # Opções de escolha do menu para o usuário
     while True:
         opcao = banco.menu()
         if opcao == "d":
@@ -375,7 +402,7 @@ def main():
     
     print(Fore.GREEN + "≡≡≡ Sessão finalizada! ≡≡≡")
 
-main()
+main() # Inicia o programa
 
 
     
