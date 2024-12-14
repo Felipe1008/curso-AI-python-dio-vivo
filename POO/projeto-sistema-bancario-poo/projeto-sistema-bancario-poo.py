@@ -1,8 +1,15 @@
 from abc import ABC, abstractmethod
+from cgitb import text
 from datetime import datetime
 import textwrap
-from colorama import Fore, Back, Style
+from colorama import Fore
+import pytz
 
+# Projeto Sistema Bancário
+from abc import ABC, abstractmethod
+from datetime import datetime
+import textwrap
+from colorama import Fore
 
 # Classe base para Clientes, que pode ser estendida futuramente para Cliente Pessoa Física (PF) ou Pessoa Jurídica (PJ)
 class Cliente:
@@ -74,8 +81,8 @@ class Conta:
         return self._historico
 
     @classmethod
-    def nova_conta(cls, cliente, numero):
-        return cls(cliente, numero)
+    def nova_conta(cls, cliente, numero, agencia):
+        return cls(numero, agencia, cliente)
 
     def sacar(self, valor):
         if valor < self._saldo and valor > 0: # Verifica se há saldo suficiente
@@ -98,23 +105,41 @@ class Conta:
 # Subclasse específica para Conta Corrente, com regras de saque e limite
 class ContaCorrente(Conta):
     # Construtor seta valores padrões para limite e limite de saques
-    def __init__(self, numero, agencia, cliente, limite=500, limite_saques=3):
+    def __init__(self, numero, agencia, cliente, limite=500, limite_saques=3, max_transacoes_diarias=10):
         super().__init__(numero, agencia, cliente)
         self._limite = limite
         self._limite_saques = limite_saques
         self._qtdade_saques = 0
+        self._qtdade_depositos = 0
+        self._transacoes_diarias = 0
+        self._max_transacoes_diarias = max_transacoes_diarias
+        self._data = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d-%m-%Y")
 
     # Conta quantos saques já foram feitos no dia para determinada conta corrente    
     def contar_qtdade_saques(self):
         self._qtdade_saques = 0
         for transacao in self.historico.transacoes: # Percorre as transações da conta
-                if transacao['tipo'] == "Saque":
+                ## Checa quantas transações do tipo saque foram feitas no dia atual
+                if transacao['tipo'] == "Saque" and datetime.strptime(transacao['data'], "%d-%m-%Y %H:%M:%S").strftime("%d-%m-%Y") == self._data:
                     self._qtdade_saques += 1
+    
+    def contar_qtdade_depositos(self):
+        self._qtdade_depositos = 0
+        for transacao in self.historico.transacoes: # Percorre as transações da conta
+                ## Checa quantas transações do tipo saque foram feitas no dia atual
+                if transacao['tipo'] == "Deposito" and datetime.strptime(transacao['data'], "%d-%m-%Y %H:%M:%S").strftime("%d-%m-%Y") == self._data:
+                    self._qtdade_depositos += 1
+    
+    def contar_qtdate_transacoes(self):
+        self.contar_qtdade_saques()
+        self.contar_qtdade_depositos()
+        self._transacoes_diarias = self._qtdade_saques + self._qtdade_depositos
 
     # Sobrescreve o método sacar para aplicar limites e restrições adicionais
     def sacar(self, valor):
         self.contar_qtdade_saques()
-
+        self.contar_qtdate_transacoes()
+    
         if valor > self._limite:
             print(Fore.RED + "@@@ Operação inconcluída! Limite insuficiente. @@@")
             return False
@@ -122,8 +147,22 @@ class ContaCorrente(Conta):
         elif self._qtdade_saques >= self._limite_saques:
             print(Fore.RED + "@@@ Operação inconcluída! Quantidade máxima de saques atingida. @@@")
             return False
+        
+        elif self._transacoes_diarias >= self._max_transacoes_diarias:
+            print(Fore.RED + "@@@ Quantidade máxima de transações diárias excedida. @@@")
+            return False
 
         return super().sacar(valor)  # Chama o método sacar da classe base
+    
+    # Sobrescreve o método depositar para aplicar o limite de transações diárias
+    def depositar(self, valor):
+        self.contar_qtdate_transacoes()
+
+        if self._transacoes_diarias >= self._max_transacoes_diarias:
+            print(Fore.RED + "@@@ Quantidade máxima de transações diárias excedida. @@@")
+            return False
+
+        return super().depositar(valor)
 
 # Classe abstrata que define a estrutura de uma Transação
 class Transacao(ABC):
@@ -156,7 +195,17 @@ class Historico:
                 print(Fore.WHITE + "-" * 60)
         else:
             print(Fore.WHITE + "Não há transações!")
-
+    
+    # Implementação do gerador
+    def gerador_gerar_relatorio(self, tipo=None):
+        if not tipo:
+            for transacao in self.transacoes:
+                yield transacao
+        else:
+            for transacao in self.transacoes:
+                if transacao['tipo'].lower() == tipo.lower():
+                    yield transacao
+        
 # Subclasse de Transacao para depósitos
 class Deposito(Transacao):
     def __init__(self, valor):
@@ -168,7 +217,7 @@ class Deposito(Transacao):
             transacao_info = {
                 "tipo": "Deposito",
                 "valor": self._valor,
-                "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                "data": datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d-%m-%Y %H:%M:%S")
             }
 
             conta.historico.adicionar_transacao(transacao_info) # Adiciona a transação ao histórico
@@ -184,11 +233,34 @@ class Saque(Transacao):
             transacao_info = {
                 "tipo": "Saque",
                 "valor": self._valor,
-                "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                "data": datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d-%m-%Y %H:%M:%S")
             }
             
             conta.historico.adicionar_transacao(transacao_info) # Adiciona a transação ao histórico
 
+# Iterador das contas do banco
+class IteradorContasBanco: 
+    def __init__(self, contas):
+        self._contas = contas
+        self._contador = 0
+    
+    def __iter__(self):
+        self._contador = 0
+        return self 
+        
+    def __next__(self):
+        if self._contador < len(self._contas):
+            conta = self._contas[self._contador]
+            self._contador += 1
+            return {
+                "titular": conta.cliente.nome,
+                "numero": conta.numero,
+                "agencia": conta.agencia,
+                "saldo": conta.saldo
+            }
+
+        raise StopIteration
+       
 # Classe Banco que gerencia clientes, contas e transações           
 class Banco:
     def __init__(self, endereco, nome):
@@ -215,17 +287,19 @@ class Banco:
 
     # Exibe o menu principal e retorna a opção escolhida pelo usuário
     def menu(self):
-        menu = Fore.WHITE + """\n
-        ========= MENU ==========
-        [d]\t Depositar
-        [s]\t Sacar
-        [e]\t Extrato
-        [nc]\t Nova Conta
-        [lc]\t Listar Contas
-        [nu]\t Novo Cliente
-        [q]\t Sair
-        """
-        return input(textwrap.dedent(menu))
+        menu =  textwrap.dedent("""\n
+            ========= MENU ==========
+            [d]\t Depositar
+            [s]\t Sacar
+            [e]\t Extrato
+            [nc]\t Nova Conta
+            [lc]\t Listar Contas
+            [nu]\t Novo Cliente
+            [gr]\t Gerar Relatório de Transações
+            [it]\t Iterar Contas do Banco
+            [q]\t Sair
+            """)
+        return input(Fore.WHITE + menu)
 
     # Encontra um cliente pelo CPF
     def filtrar_clientes(self, cpf, clientes):
@@ -245,7 +319,23 @@ class Banco:
                 return conta
         
         return None
+        
+    # Decorador que registra informações sobre a transação realizada, 
+    # incluindo o horário e o tipo da transação
+    def decorador_log(transacao_func):
+        def log_transacao(self, *args, **kwargs):
+            horario_atual = datetime.now()
+            horario_formatado = horario_atual.strftime("%Y-%m-%d %H:%M:%S")
+            print(Fore.WHITE + "="*41)
+            print(Fore.WHITE + f"Horário da transação: {horario_formatado}")
+            print(Fore.WHITE + f"Tipo da transação: {transacao_func.__name__.capitalize()}")
+            print(Fore.WHITE + "="*41)
+            resultado = transacao_func(self, *args, **kwargs)
+            print(Fore.GREEN + "Transação realizada com sucesso!" if resultado else Fore.RED + "Falha na transação!")
+            return resultado
 
+        return log_transacao
+            
     # Realiza um depósito na conta de um cliente
     def depositar(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
@@ -253,7 +343,7 @@ class Banco:
 
         if not cliente:
             print(Fore.RED + "@@@ Cliente não encontrado!  Não foi possível realizar o depósito @@@")
-            return
+            return False
 
         valor = float(input(Fore.WHITE + "Informe o valor do depósito: "))
         transacao = Deposito(valor)
@@ -261,9 +351,10 @@ class Banco:
         conta = self.recuperar_conta_cliente(cliente)
         if not conta:
             print(Fore.RED + "@@@ Conta não encontrada! Não foi possível realizar o depósito @@@")
-            return
+            return False
             
         cliente.realizar_transacao(conta, transacao)
+        return True
 
     # Realiza um saque na conta de um cliente
     def sacar(self, clientes):
@@ -272,7 +363,7 @@ class Banco:
 
         if not cliente:
             print(Fore.RED + "@@@ Cliente não encontrado! Não foi possível realizar o saque @@@")
-            return
+            return False
         
         valor = float(input("Informe o valor do saque: "))
         transacao = Saque(valor)
@@ -280,10 +371,39 @@ class Banco:
         conta = self.recuperar_conta_cliente(cliente)
         if not conta:
             print(Fore.RED + "@@@ Conta não encontrada! Não foi possível realizar o saque @@@")
-            return
+            return False
         
         cliente.realizar_transacao(conta, transacao)
-    
+        return True
+
+    # Implementação do gerador em prática no sistema do Banco
+    def gerador_relatorio(self, clientes):
+        cpf = input("Digite o CPF do cliente: ")
+        cliente = self.filtrar_clientes(cpf, clientes)
+
+        if not cliente:
+            print(Fore.RED + "@@@ Cliente não encontrado! @@@")
+            return
+
+        conta = self.recuperar_conta_cliente(cliente)
+
+        if not conta:
+            print(Fore.RED + "@@@ Conta não encontrada! Não foi possível gerar o relatório @@@")
+            return
+
+        tipo_transacao = input(Fore.WHITE + "Digite o tipo de transação (Deposito/Saque) ou deixe em branco para todas: ").strip()
+        print(Fore.WHITE + f"\n{'='*25} RELATÓRIO DE TRANSAÇÕES {'='*25}")
+        print(Fore.WHITE + f"Cliente: {cliente.nome}")
+        print(Fore.WHITE + f"Agência: {conta.agencia} | Conta: {conta.numero}")
+        print(Fore.WHITE + "="*60)
+
+        for transacao in conta.historico.gerador_gerar_relatorio(tipo=tipo_transacao):
+            valor = transacao['valor']
+            print(f"{Fore.YELLOW + transacao['data']:<30}{Fore.BLUE + transacao['tipo']:<20}{Fore.GREEN + f'{valor:>20.2f}'}")
+            print(Fore.WHITE + "-" * 60)
+
+        print(Fore.WHITE + "="*75)
+
     # Exibe o extrato de uma conta específica de um determinado cliente
     def exibir_extrato(self, clientes):
         cpf = input("Digite o CPF do cliente: ")
@@ -292,14 +412,14 @@ class Banco:
         # Se o cliente não for encontrado Retorna
         if not cliente:
             print(Fore.RED + "@@@ Cliente não encontrado! @@@")
-            return
+            return False
         
         conta = self.recuperar_conta_cliente(cliente) # Encontra a conta do cliente
 
         # Se a conta não for encontrada Retorna
         if not conta:
             print(Fore.RED + "@@@ Cliente sem conta cadastrada! Não foi possível exibir o extrato @@@")
-            return
+            return False
 
         print(Fore.WHITE + f"\n{'='*25} EXTRATO {'='*25}")
         print(Fore.WHITE + f"Cliente: {cliente.nome}")
@@ -309,13 +429,14 @@ class Banco:
         conta.historico.exibir_historico() # Exibe o histórico das transações da conta
         print(Fore.GREEN + f"{'Saldo atual:':<40}{conta.saldo:>20.2f}")
         print(Fore.WHITE + "="*60)
+        return True
 
     # Cria e adiciona um novo cliente ao banco
     def criar_cliente(self, clientes):
-        tipo_cliente = int(input(Fore.WHITE + """
+        tipo_cliente = int(input(Fore.WHITE + textwrap.dedent("""
         [1] para PF
         [2] para Cliente genérico
-        """))
+        """)))
         endereco = input(Fore.WHITE + "Digite o endereço: ")
         if tipo_cliente == 1:
             nome = input("Digite o Nome: ")
@@ -326,9 +447,11 @@ class Banco:
             cliente = Cliente(endereco=endereco)
         else:
             print(Fore.RED + "@@@ Escolha inválida! @@@")
-            return
+            return False
 
         clientes.append(cliente)
+        print(Fore.GREEN + "≡≡≡ Cliente cadastrado com sucesso! ≡≡≡")
+        return True
 
     # Abre uma nova conta e a associa a um cliente
     def criar_conta(self, clientes):
@@ -337,10 +460,10 @@ class Banco:
         if not cliente:
             print(Fore.RED + "@@@ Cliente não encontrado! Não foi possível criar a conta @@@")
             return
-        tipo_conta = int(input(Fore.WHITE + """
+        tipo_conta = int(input(Fore.WHITE + textwrap.dedent("""
         [1] Conta Corrente
         [2] Conta genérica
-        """))
+        """)))
         numero = input(Fore.WHITE + "Digite o número da conta: ")
         agencia = input(Fore.WHITE + "Digite a agência: ")
 
@@ -355,6 +478,7 @@ class Banco:
         self.contas.append(conta) # Adiciona a conta à lista de contas do banco
         cliente.adicionar_conta(conta) # Adiciona a conta ao cliente
         print(Fore.GREEN + "≡≡≡ Conta criada com sucesso! ≡≡≡")
+        return True
         
     # Lista as contas de um determinado cliente
     def listar_contas(self, clientes):
@@ -372,7 +496,12 @@ class Banco:
             print(Fore.WHITE + f"Agência: {conta.agencia}")
             print(Fore.WHITE + f"Número: {conta.numero}")
             print(Fore.WHITE + "="*20)
-
+    
+    def iterar_contas_banco(self):
+        for conta in IteradorContasBanco(self.contas):
+            print("="*100)
+            print(textwrap.dedent(str(conta)))
+    
 # Função principal que inicia o sistema do banco
 def main():
     clientes = []
@@ -394,6 +523,10 @@ def main():
             banco.listar_contas(clientes)
         elif opcao == "nu":
             banco.criar_cliente(clientes)
+        elif opcao == "gr":
+            banco.gerador_relatorio(clientes)
+        elif opcao == "it":
+            banco.iterar_contas_banco()
         elif opcao == "q":
             print(Fore.LIGHTGREEN_EX + "Finalizando sessão...")
             break
@@ -402,10 +535,7 @@ def main():
     
     print(Fore.GREEN + "≡≡≡ Sessão finalizada! ≡≡≡")
 
-main() # Inicia o programa
-
-
-    
+main() # Inicia o programa 
 
 
 
