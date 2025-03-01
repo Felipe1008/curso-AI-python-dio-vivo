@@ -1,0 +1,4 @@
+[2025-03-01 19:36:17] Fun��o 'criar_cliente' executada com argumentos '([<PessoaFisica: ('Felipe', '1')>],)' e '{}'. Retornou None
+[2025-03-01 19:36:28] Fun��o 'criar_conta' executada com argumentos '(1, [<PessoaFisica: ('Felipe', '1')>], [<ContaCorrente: ('0001' , '1', 'Felipe')>])' e '{}'. Retornou None
+[2025-03-01 19:36:39] Fun��o 'depositar' executada com argumentos '([<PessoaFisica: ('Felipe', '1')>],)' e '{}'. Retornou None
+
