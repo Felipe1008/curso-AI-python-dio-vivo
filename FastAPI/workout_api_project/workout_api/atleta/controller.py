@@ -55,7 +55,7 @@ async def post(db_session: DatabaseDependency, atleta_in: AtletaIn = Body(...)):
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Ocorreu um erro ao inserir os dados no banco.'
+            detail='Atleta já cadastrado.'
         )
 
     return atleta_out
